@@ -20,15 +20,44 @@
             display: block;
             outline: none;
         }
+        #size-warning {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 16px;
+            text-align: center;
+            z-index: 10;
+            display: none;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px 30px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        #size-warning h3 {
+            margin: 0 0 8px 0;
+            font-size: 18px;
+            color: #ffd700;
+        }
+        #size-warning p {
+            margin: 0;
+            font-size: 14px;
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
     <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    <div id="size-warning">
+        <h3>窗口太小</h3>
+        <p>请放大窗口以观赏烟花</p>
+    </div>
     <script>
         var Module = {
             canvas: (function() {
                 var canvas = document.getElementById('canvas');
-                // Make canvas full screen
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
                 return canvas;
@@ -38,11 +67,26 @@
             }
         };
         
+        var MIN_WIDTH = 320;
+        var MIN_HEIGHT = 240;
+        
+        function checkWindowSize() {
+            var warning = document.getElementById('size-warning');
+            if (window.innerWidth < MIN_WIDTH || window.innerHeight < MIN_HEIGHT) {
+                warning.style.display = 'block';
+            } else {
+                warning.style.display = 'none';
+            }
+        }
+        
         window.addEventListener('resize', function() {
             var canvas = document.getElementById('canvas');
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            checkWindowSize();
         });
+        
+        checkWindowSize();
     </script>
     <script src="fireworks.js"></script>
 </body>

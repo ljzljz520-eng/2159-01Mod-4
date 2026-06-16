@@ -10,6 +10,12 @@
 #define SCREEN_HEIGHT 1080
 #define MAX_FIREWORKS 30
 #define MAX_PARTICLES 300
+#define MIN_SCREEN_WIDTH 320
+#define MIN_SCREEN_HEIGHT 240
+#define RESIZE_CHECK_INTERVAL 30
+
+int frame_count = 0;
+int screen_too_small = 0;
 
 typedef struct {
     float x, y;
@@ -38,6 +44,22 @@ int screen_height = 0;
 
 float random_float(float min, float max) {
     return min + (float)rand() / ((float)RAND_MAX / (max - min));
+}
+
+void check_screen_size() {
+    double w, h;
+    emscripten_get_element_css_size("#canvas", &w, &h);
+    int new_width = (int)w;
+    int new_height = (int)h;
+
+    if (new_width != screen_width || new_height != screen_height) {
+        screen_width = new_width;
+        screen_height = new_height;
+
+        SDL_SetWindowSize(window, screen_width, screen_height);
+    }
+
+    screen_too_small = (screen_width < MIN_SCREEN_WIDTH || screen_height < MIN_SCREEN_HEIGHT);
 }
 
 // Convert HSL to RGB
@@ -77,18 +99,21 @@ void init_particle(Particle *p, float x, float y, int r, int g, int b) {
 }
 
 void init_firework(Firework *f) {
-    f->x = random_float(100, screen_width - 100);
+    float margin = screen_width * 0.1f;
+    if (margin < 20.0f) margin = 20.0f;
+    if (margin > 100.0f) margin = 100.0f;
+
+    f->x = random_float(margin, screen_width - margin);
     f->y = screen_height;
-    f->targetX = f->x + random_float(-100, 100); // Slightly angled shot
-    f->targetY = random_float(100, screen_height * 0.4); // Explode higher
+    f->targetX = f->x + random_float(-margin * 0.5f, margin * 0.5f);
+    f->targetY = random_float(margin, screen_height * 0.5f);
     
     float angle = atan2(f->targetY - f->y, f->targetX - f->x);
-    float speed = random_float(10.0f, 15.0f); // Faster launch
+    float speed = random_float(10.0f, 15.0f);
     
     f->vx = cos(angle) * speed;
     f->vy = sin(angle) * speed;
     
-    // Generate vibrant colors using HSL
     float h = random_float(0, 360);
     hsl_to_rgb(h, 1.0f, 0.5f, &f->r, &f->g, &f->b);
     
@@ -97,12 +122,15 @@ void init_firework(Firework *f) {
 }
 
 void update() {
-    // Determine screen size dynamically if needed
-    // emscripten_get_element_css_size can be called here if canvas resizes, 
-    // but for performance we might want to check less frequently or listen to resize events.
-    // For now we assume size is set at init or updated via JS if needed.
+    frame_count++;
+    if (frame_count % RESIZE_CHECK_INTERVAL == 0) {
+        check_screen_size();
+    }
 
-    // Increased launch frequency (approx every 10 frames = 6 launches/sec at 60fps)
+    if (screen_too_small) {
+        return;
+    }
+
     if (rand() % 10 == 0) {
         for (int i = 0; i < MAX_FIREWORKS; i++) {
             if (!fireworks[i].active) {
@@ -161,9 +189,17 @@ void update() {
 }
 
 void draw() {
-    // Create trail effect with semi-transparent black
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 25); // Lower alpha = longer trails
+
+    if (screen_too_small) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_Rect rect = {0, 0, screen_width, screen_height};
+        SDL_RenderFillRect(renderer, &rect);
+        SDL_RenderPresent(renderer);
+        return;
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 25);
     SDL_Rect rect = {0, 0, screen_width, screen_height};
     SDL_RenderFillRect(renderer, &rect);
 
@@ -173,20 +209,32 @@ void draw() {
         Firework *f = &fireworks[i];
         
         if (!f->exploded) {
-            // Draw rising firework (rocket)
+            if (f->x < 0 || f->x > screen_width || f->y < 0 || f->y > screen_height) {
+                f->active = 0;
+                continue;
+            }
             SDL_SetRenderDrawColor(renderer, f->r, f->g, f->b, 255);
             SDL_Rect r = {(int)f->x - 2, (int)f->y - 2, 4, 4};
             SDL_RenderFillRect(renderer, &r);
         } else {
-            // Draw explosion particles
+            int active_particles = 0;
             for (int j = 0; j < MAX_PARTICLES; j++) {
                 if (f->particles[j].active) {
                     Particle *p = &f->particles[j];
+                    
+                    if (p->x < -10 || p->x > screen_width + 10 || p->y < -10 || p->y > screen_height + 10) {
+                        p->active = 0;
+                        continue;
+                    }
+                    
+                    active_particles++;
                     SDL_SetRenderDrawColor(renderer, p->r, p->g, p->b, p->a);
-                    // Draw slightly larger particles for better visibility
                     SDL_Rect p_rect = {(int)p->x - 1, (int)p->y - 1, 3, 3};
                     SDL_RenderFillRect(renderer, &p_rect);
                 }
+            }
+            if (active_particles == 0) {
+                f->active = 0;
             }
         }
     }
